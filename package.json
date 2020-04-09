@@ -8,7 +8,7 @@
     "dev": "nuxt",
     "build": "nuxt generate --spa",
     "start": "nuxt start",
-    "deploy": "npm run build ; now deploy --prod"
+    "deploy": "now deploy --prod"
   },
   "dependencies": {
     "@nuxtjs/axios": "^5.9.7",
