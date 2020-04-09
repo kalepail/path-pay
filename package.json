@@ -1,0 +1,24 @@
+{
+  "name": "path-pay",
+  "version": "1.0.0",
+  "description": "My well-made Nuxt.js project",
+  "author": "Tyler van der Hoeven",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt",
+    "build": "nuxt generate --spa",
+    "start": "nuxt start",
+    "deploy": "npm run build ; now deploy --prod"
+  },
+  "dependencies": {
+    "@nuxtjs/axios": "^5.3.6",
+    "bignumber.js": "^9.0.0",
+    "lodash-es": "^4.17.15",
+    "nuxt": "^2.0.0",
+    "stellar-sdk": "^3.3.0"
+  },
+  "devDependencies": {
+    "node-sass": "^4.13.1",
+    "sass-loader": "^8.0.2"
+  }
+}
