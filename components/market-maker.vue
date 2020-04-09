@@ -3,7 +3,7 @@
   <h1>Market Maker</h1>
 
   <h2 v-if="marketMakerAccount">{{marketMakerPublicKey}}</h2>
-  <button @click="createAccounts" v-else>Create Account</button>
+  <button @click="createAccounts" v-else>{{createAccountsLoading ? '...' : 'Create Account'}}</button>
 
   <ul class="assets" v-if="marketMakerAccount">
     <li v-for="(asset, i) in marketMakerAccount.balances" :key="i">
@@ -14,8 +14,8 @@
   </ul>
 
   <div class="actions" v-if="marketMakerAccount">
-    <button @click="makeMarket('USD')">Make USD market</button>
-    <button @click="makeMarket('EUR')">Make EUR market</button>
+    <button @click="makeMarket('USD')">{{makeMarketUSDLoading ? '...' : 'Make USD market'}} </button>
+    <button @click="makeMarket('EUR')">{{makeMarketEURLoading ? '...' : 'Make EUR market'}} </button>
   </div>
 </div>
 </template>
@@ -32,6 +32,9 @@ export default {
       marketMakerSecret: localStorage.getItem('pathpayMarketMaker'),
       assetIssuerSecret: localStorage.getItem('pathpayAssetIssuer'),
       server: new Server('https://horizon-testnet.stellar.org'),
+      createAccountsLoading: false,
+      makeMarketUSDLoading: false,
+      makeMarketEURLoading: false,
     }
   },
   computed: {
@@ -65,6 +68,8 @@ export default {
     async createAccounts() {
       let marketMakerKeypair
       let assetIssuerKeypair
+
+      this.createAccountsLoading = true
 
       if (this.marketMakerSecret) {
         marketMakerKeypair = Keypair.fromSecret(this.marketMakerSecret)
@@ -126,15 +131,18 @@ export default {
       })
       .catch((err) => console.error(err))
       .finally(() => this.updateMarketMakerAccount())
+      .finally(() => this.createAccountsLoading = false)
     },
 
-    makeMarket(asset) {
+    makeMarket(asset_code) {
+      this[`makeMarket${asset_code}Loading`] = true
+
       let base_asset_price = new BigNumber('0.0500000')
 
-      if (asset === 'EUR')
+      if (asset_code === 'EUR')
         base_asset_price = new BigNumber('0.0400000')
-        
-      asset = new Asset(asset, this.assetIssuerPublicKey)
+
+      const asset = new Asset(asset_code, this.assetIssuerPublicKey)
 
       return this.server
       .accounts()
@@ -147,7 +155,7 @@ export default {
           fee: BASE_FEE,
           networkPassphrase: Networks.TESTNET
         })
-        
+
         _.each(_.range(9), (i) => {
           const fraction = new BigNumber(i).plus(1).times(0.0000001)
 
@@ -179,7 +187,10 @@ export default {
       .then((res) => console.log(res))
       .catch((err) => console.error(err))
       .finally(() => this.updateMarketMakerAccount())
-      .finally(() => setTimeout(() => this.$parent.$emit('updateBooks'), 1000))
+      .finally(() => setTimeout(() => {
+        this.$parent.$emit('updateBooks')
+        this[`makeMarket${asset_code}Loading`] = false
+      }, 1000))
     },
 
     updateMarketMakerAccount() {
@@ -206,7 +217,7 @@ h1 {
   font-weight: 600;
   margin-bottom: 5px;
 }
-h2, 
+h2,
 button {
   margin-bottom: 20px;
 }

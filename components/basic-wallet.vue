@@ -3,7 +3,7 @@
   <h1>{{typeFriendly}} Wallet</h1>
 
   <h2 v-if="userAccount">{{userPublicKey}}</h2>
-  <button @click="createAccount" v-else>Create Account</button>
+  <button @click="createAccount" v-else>{{createAccountLoading ? '...' : 'Create Account'}}</button>
 
   <ul class="assets" v-if="userAccount">
     <li v-for="(asset, i) in userAccount.balances" :key="i">
@@ -12,20 +12,18 @@
   </ul>
 
   <div class="actions" v-if="
-    assetIssuerPublicKey 
-    && userAccount 
+    assetIssuerPublicKey
+    && userAccount
     && type === 'you'
   ">
-    <button @click="pathPayUsd">Purchase USD with XLM</button>
-    <button @click="pathPayEur" v-if="friendPublicKey">Send EUR to friend via USD</button>
+    <button @click="pathPayUsd">{{ pathPayUsdLoading ? '...' : 'Purchase USD with XLM' }}</button>
+    <button @click="pathPayEur" v-if="friendPublicKey">{{ pathPayEurLoading ? '...' : 'Send EUR to friend via USD' }}</button>
   </div>
 </div>
 </template>
 
 <script>
 import { Server, Keypair, Account, TransactionBuilder, BASE_FEE, Networks, Operation, Asset } from 'stellar-sdk'
-// import BigNumber from 'bignumber.js'
-// import _ from 'lodash-es'
 
 export default {
   props: ['type'],
@@ -36,6 +34,10 @@ export default {
       friendSecret: localStorage.getItem('pathpayFriend'),
       assetIssuerSecret: localStorage.getItem('pathpayAssetIssuer'),
       server: new Server('https://horizon-testnet.stellar.org'),
+      createAccountLoading: false,
+      pathPayUsdLoading: false,
+      pathPayEurLoading: false,
+
     }
   },
   computed: {
@@ -78,6 +80,8 @@ export default {
     async createAccount() {
       let userKeypair
 
+      this.createAccountLoading = true
+
       if (this.userSecret) {
         userKeypair = Keypair.fromSecret(this.userSecret)
       } else {
@@ -91,9 +95,13 @@ export default {
 
       if (this.type === 'friend')
         this.$parent.$emit('friendSecret', this.userSecret)
+
+      this.createAccountLoading = true
     },
 
     pathPayUsd() {
+      this.pathPayUsdLoading = true
+
       return this.server
       .accounts()
       .accountId(this.userPublicKey)
@@ -128,10 +136,13 @@ export default {
       .finally(() => setTimeout(() => {
         this.$parent.$emit('updateMarketMakerAccount')
         this.$parent.$emit('updateBooks')
+        this.pathPayUsdLoading = false
       }, 1000))
     },
 
     pathPayEur() {
+      this.pathPayEurLoading = true
+
       return this.server
       .accounts()
       .accountId(this.userPublicKey)
@@ -174,6 +185,7 @@ export default {
         this.$parent.$emit('updateUserAccount')
         this.$parent.$emit('updateMarketMakerAccount')
         this.$parent.$emit('updateBooks')
+        this.pathPayEurLoading = false
       }, 1000))
     },
 
@@ -201,7 +213,7 @@ h1 {
   font-weight: 600;
   margin-bottom: 5px;
 }
-h2, 
+h2,
 button {
   margin-bottom: 20px;
 }

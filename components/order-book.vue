@@ -34,6 +34,7 @@
 <script>
 import { Server, Keypair, Account, TransactionBuilder, BASE_FEE, Networks, Operation, Asset } from 'stellar-sdk'
 import _ from 'lodash-es'
+import Promise from 'bluebird'
 
 export default {
   data() {
@@ -78,13 +79,13 @@ export default {
     },
 
     updateBooks() {
-      _.each(this.books, (book, i) => {
+      return new Promise.mapSeries(this.books, (book, i) => {
         if (
-          this.assetIssuerPublicKey 
+          this.assetIssuerPublicKey
           && book.base.issuer !== this.assetIssuerPublicKey
         ) book.base.issuer = this.assetIssuerPublicKey
 
-        this.server
+        return this.server
         .orderbook(book.base, book.counter)
         .call()
         .then((res) => {
@@ -155,7 +156,7 @@ h1 {
 
 .header,
 .order {
-  
+
   span {
     width: 150px;
     font-size: 14px;
