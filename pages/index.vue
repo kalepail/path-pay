@@ -17,7 +17,7 @@ import feeChannel from '~/components/fee-channel'
 export default {
   data() {
     return {
-      types: ['you', 'friend']
+      types: ['bob', 'alice', 'friend']
     }
   },
   components: {
@@ -47,6 +47,5 @@ section {
   flex-direction: column;
   overflow: hidden;
   align-items: flex-start;
-  height: 100%;
 }
 </style>

@@ -10,17 +10,30 @@
       <strong>{{asset.asset_code || 'XLM'}}</strong>: {{asset.balance}}
     </li>
     <li>
-      <strong>Sequence</strong>: {{userAccount.sequence - ogSequence}}
+      <strong>Sequence</strong>: {{userAccount.sequence - userAccountOgSequence}}
     </li>
   </ul>
 
   <div class="actions" v-if="
-    marketMakerSecret
+    feeChannelPublicKey
     && userAccount
-    && type === 'you'
+    && friendPublicKey
+    && type === 'bob'
   ">
-    <button @click="feeBumpPay" v-if="friendPublicKey">{{ feeBumpPayLoading ? '...' : 'Send 10 XLM to Friend via Fee Bump Transaction' }}</button>
+    <button @click="feeBumpPay()">{{ feeBumpPayLoading ? '...' : 'Send 10 XLM to Friend via Fee Bump Transaction' }}</button>
   </div>
+
+  <div class="actions" v-if="
+    feeChannelPublicKey
+    && userAccount
+    && friendPublicKey
+    && type === 'alice'
+  ">
+    <button @click="plainPayBoth">{{ plainPayLoading ? '...' : 'Send 10 XLM to Friend from Bob and Alice via Plain Transaction' }}</button>
+    <button @click="feeBumpPayBoth">{{ feeBumpPayLoading ? '...' : 'Send 10 XLM to Friend from Bob and Alice via Fee Bump Transaction' }}</button>
+  </div>
+
+  <pre class="error" v-if="error">{{JSON.stringify(error, null, 2)}}</pre>
 </div>
 </template>
 
@@ -31,20 +44,30 @@ export default {
   props: ['type'],
   data() {
     return {
+      server: new Server('https://horizon-testnet.stellar.org'),
+
       userSecret: null,
       userAccount: null,
-      ogSequence: null,
+      userAccountOgSequence: null,
+
+      bobSecret: localStorage.getItem('feebumpBob'),
+      aliceSecret: localStorage.getItem('feebumpAlice'),
       friendSecret: localStorage.getItem('feebumpFriend'),
-      marketMakerSecret: localStorage.getItem('feebumpMarketMaker'),
-      server: new Server('https://horizon-testnet.stellar.org'),
+
+      feeChannelSecret: localStorage.getItem('feebumpFeeChannel'),
+
       createAccountLoading: false,
       feeBumpPayLoading: false,
+      plainPayLoading: false,
+
+      error: null
     }
   },
   computed: {
     typeFriendly() {
-      return this.type === 'you' ? 'Your' : 'Friend'
+      return this.type[0].toUpperCase() +  this.type.substr(1, this.type.length)
     },
+
     userKeypair() {
       if (this.userSecret)
         return Keypair.fromSecret(this.userSecret)
@@ -52,6 +75,23 @@ export default {
     userPublicKey() {
       if (this.userKeypair)
         return this.userKeypair.publicKey()
+    },
+
+    bobKeypair() {
+      if (this.bobSecret)
+        return Keypair.fromSecret(this.bobSecret)
+    },
+    bobPublicKey() {
+      if (this.bobKeypair)
+        return this.bobKeypair.publicKey()
+    },
+    aliceKeypair() {
+      if (this.aliceSecret)
+        return Keypair.fromSecret(this.aliceSecret)
+    },
+    alicePublicKey() {
+      if (this.aliceKeypair)
+        return this.aliceKeypair.publicKey()
     },
     friendKeypair() {
       if (this.friendSecret)
@@ -61,25 +101,23 @@ export default {
       if (this.friendKeypair)
         return this.friendKeypair.publicKey()
     },
-    marketMakerPublicKey() {
-      if (this.marketMakerSecret)
-        return Keypair.fromSecret(this.marketMakerSecret).publicKey()
+
+    feeChannelKeypair() {
+      if (this.feeChannelSecret)
+        return Keypair.fromSecret(this.feeChannelSecret)
     },
-    marketMakerKeypair() {
-      if (this.marketMakerSecret)
-        return Keypair.fromSecret(this.marketMakerSecret)
+    feeChannelPublicKey() {
+      if (this.feeChannelKeypair)
+        return this.feeChannelKeypair.publicKey()
     },
   },
   created() {
     this.userSecret = localStorage.getItem(`feebump${this.typeFriendly}`)
     this.updateUserAccount()
 
-    this.$parent.$on('marketMakerSecret', (marketMakerSecret) => this.marketMakerSecret = marketMakerSecret)
-
-    if (this.type === 'friend')
-      this.$parent.$on('updateUserAccount', this.updateUserAccount)
-    else
-      this.$parent.$on('friendSecret', (friendSecret) => this.friendSecret = friendSecret)
+    this.$parent.$on('updateUserAccount', this.updateUserAccount)
+    this.$parent.$on('feeChannelSecret', (feeChannelSecret) => this.feeChannelSecret = feeChannelSecret)
+    this.$parent.$on('setWalletSecret', ({type, secret}) => this[`${type}Secret`] = secret)
   },
   methods: {
     async createAccount() {
@@ -96,19 +134,30 @@ export default {
       }
 
       localStorage.setItem(`feebump${this.typeFriendly}`, this.userSecret)
-      this.updateUserAccount()
-
-      if (this.type === 'friend')
-        this.$parent.$emit('friendSecret', this.userSecret)
+      this.$parent.$emit('setWalletSecret', {type: this.type, secret: this.userSecret})
+      await this.updateUserAccount()
 
       this.createAccountLoading = true
     },
+    updateUserAccount() {
+      if (!this.userPublicKey)
+        return
 
-    feeBumpPay() {
+      return this.server
+      .loadAccount(this.userPublicKey)
+      .then((account) => {
+        if (this.userAccountOgSequence === null)
+          this.userAccountOgSequence = account.sequence
+
+        this.userAccount = account
+      })
+    },
+
+    feeBumpPay(publicKey, keypair) {
       this.feeBumpPayLoading = true
 
-      this.server
-      .loadAccount(this.userPublicKey)
+      return this.server
+      .loadAccount(publicKey || this.userPublicKey)
       .then((account) => {
         const innerTx = new TransactionBuilder(account, {
           fee: BASE_FEE,
@@ -123,47 +172,119 @@ export default {
         .setTimeout(0)
         .build()
 
-        innerTx.sign(this.userKeypair)
+        innerTx.sign(keypair || this.userKeypair)
 
         const feeBumpTxn = new TransactionBuilder.buildFeeBumpTransaction(
-          this.marketMakerKeypair,
+          this.feeChannelKeypair,
           BASE_FEE,
           innerTx,
           Networks.TESTNET
         )
 
-        feeBumpTxn.sign(this.marketMakerKeypair)
+        feeBumpTxn.sign(this.feeChannelKeypair)
 
         return this.server.submitTransaction(feeBumpTxn)
       })
       .then((res) => console.log(res))
-      .catch((err) => console.error(err))
+      .catch((err) => {
+        if (
+          publicKey
+          && keypair
+        ) throw err
+
+        else
+          console.error(err)
+      })
       .finally(() => this.updateUserAccount())
       .finally(() => setTimeout(() => {
         this.$parent.$emit('updateUserAccount')
-        this.$parent.$emit('updateMarketMakerAccount')
-        this.feeBumpPayLoading = false
+        this.$parent.$emit('updateFeeChannelAccount')
+
+        if (
+          !publicKey
+          && !keypair
+        ) this.feeBumpPayLoading = false
       }, 1000))
     },
+    async feeBumpPayBoth() {
+      this.error = null
+      this.feeBumpPayLoading = true
 
-    updateUserAccount() {
-      if (!this.userPublicKey)
-        return
+      try {
+        const bobPromise = this.feeBumpPay(this.bobPublicKey, this.bobKeypair)
+        const alicePromise = this.feeBumpPay(this.alicePublicKey, this.aliceKeypair)
 
+        const bobTask = await bobPromise
+        const aliceTask = await alicePromise
+      }
+
+      catch(err) {
+        console.error(err)
+        this.error = err.response.data
+      }
+
+      finally {
+        this.feeBumpPayLoading = false
+      }
+    },
+
+    plainPay(publicKey, keypair) {
       return this.server
-      .loadAccount(this.userPublicKey)
+      .loadAccount(this.feeChannelPublicKey)
       .then((account) => {
-        if (this.ogSequence === null)
-          this.ogSequence = account.sequence
+        const transaction = new TransactionBuilder(account, {
+          fee: BASE_FEE,
+          networkPassphrase: Networks.TESTNET
+        })
+        .addOperation(Operation.payment({
+          destination: this.friendPublicKey,
+          asset: Asset.native(),
+          amount: '10',
+          source: publicKey
+        }))
+        .setTimeout(0)
+        .build()
 
-        this.userAccount = account
+        transaction.sign(this.feeChannelKeypair, keypair)
+
+        return this.server.submitTransaction(transaction)
       })
+      .then((res) => console.log(res))
+      .finally(() => this.updateUserAccount())
+      .finally(() => setTimeout(() => {
+        this.$parent.$emit('updateUserAccount')
+        this.$parent.$emit('updateFeeChannelAccount')
+      }, 1000))
+    },
+    async plainPayBoth() {
+      this.error = null
+      this.plainPayLoading = true
+
+      try {
+        const bobPromise = this.plainPay(this.bobPublicKey, this.bobKeypair)
+        const alicePromise = this.plainPay(this.alicePublicKey, this.aliceKeypair)
+
+        const bobTask = await bobPromise
+        const aliceTask = await alicePromise
+      }
+
+      catch(err) {
+        console.error(err)
+        this.error = err.response.data
+      }
+
+      finally {
+        this.plainPayLoading = false
+      }
     },
   }
 }
 </script>
 
 <style lang="scss" scoped>
+.quadrant {
+  flex-shrink: 0;
+}
 h1 {
   font-size: 24px;
   font-weight: 600;
@@ -195,7 +316,20 @@ button {
 .actions {
 
   button {
-    margin-bottom: 0;
+    margin-bottom: 10px;
+
+    &:last-of-type {
+      margin-bottom: 0;
+    }
   }
+}
+.error {
+  font-size: 12px;
+  color: red;
+  background-color: whitesmoke;
+  overflow: scroll;
+  width: calc(100% - 20px);
+  padding: 10px;
+  margin-top: 20px;
 }
 </style>

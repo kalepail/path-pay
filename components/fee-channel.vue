@@ -2,16 +2,16 @@
 <div class="quadrant">
   <h1>Fee Channel</h1>
 
-  <h2 v-if="marketMakerAccount">{{marketMakerPublicKey}}</h2>
+  <h2 v-if="feeChannelAccount">{{feeChannelPublicKey}}</h2>
   <button @click="createAccounts" v-else>{{createAccountsLoading ? '...' : 'Create Account'}}</button>
 
-  <ul class="assets" v-if="marketMakerAccount">
-    <li v-for="(asset, i) in marketMakerAccount.balances" :key="i">
+  <ul class="assets" v-if="feeChannelAccount">
+    <li v-for="(asset, i) in feeChannelAccount.balances" :key="i">
       <span class="total"><strong>{{asset.asset_code || 'XLM'}}</strong>: {{asset.balance}}</span>
       <span class="liability">Fees: {{fees}}</span>
     </li>
     <li>
-      <span><strong>Sequence</strong>: {{marketMakerAccount.sequence - ogSequence}}</span>
+      <span><strong>Sequence</strong>: {{feeChannelAccount.sequence - ogSequence}}</span>
     </li>
   </ul>
 </div>
@@ -25,67 +25,67 @@ import _ from 'lodash-es'
 export default {
   data() {
     return {
-      marketMakerAccount: null,
+      feeChannelAccount: null,
       ogSequence: null,
-      marketMakerSecret: localStorage.getItem('feebumpMarketMaker'),
+      feeChannelSecret: localStorage.getItem('feebumpFeeChannel'),
       server: new Server('https://horizon-testnet.stellar.org'),
       createAccountsLoading: false,
     }
   },
   computed: {
-    marketMakerKeypair() {
-      if (this.marketMakerSecret)
-        return Keypair.fromSecret(this.marketMakerSecret)
+    feeChannelKeypair() {
+      if (this.feeChannelSecret)
+        return Keypair.fromSecret(this.feeChannelSecret)
     },
-    marketMakerPublicKey() {
-      if (this.marketMakerKeypair)
-        return this.marketMakerKeypair.publicKey()
+    feeChannelPublicKey() {
+      if (this.feeChannelKeypair)
+        return this.feeChannelKeypair.publicKey()
     },
     fees() {
-      const xlmBalance = _.find(this.marketMakerAccount.balances, {asset_type: 'native'}).balance
+      const xlmBalance = _.find(this.feeChannelAccount.balances, {asset_type: 'native'}).balance
       return new BigNumber(10000).minus(xlmBalance).toFixed(7)
     }
   },
   created() {
-    this.updateMarketMakerAccount()
-    this.$parent.$on('updateMarketMakerAccount', this.updateMarketMakerAccount)
+    this.updateFeeChannelAccount()
+    this.$parent.$on('updateFeeChannelAccount', this.updateFeeChannelAccount)
   },
   watch: {
 
   },
   methods: {
     async createAccounts() {
-      let marketMakerKeypair
+      let feeChannelKeypair
 
       this.createAccountsLoading = true
 
-      if (this.marketMakerSecret) {
-        marketMakerKeypair = Keypair.fromSecret(this.marketMakerSecret)
+      if (this.feeChannelSecret) {
+        feeChannelKeypair = Keypair.fromSecret(this.feeChannelSecret)
       } else {
-        marketMakerKeypair = Keypair.random()
-        this.marketMakerSecret = marketMakerKeypair.secret()
-        await this.$axios(`https://friendbot.stellar.org?addr=${this.marketMakerPublicKey}`)
+        feeChannelKeypair = Keypair.random()
+        this.feeChannelSecret = feeChannelKeypair.secret()
+        await this.$axios(`https://friendbot.stellar.org?addr=${this.feeChannelPublicKey}`)
       }
 
-      localStorage.setItem('feebumpMarketMaker', this.marketMakerSecret)
-      this.$parent.$emit('marketMakerSecret', this.marketMakerSecret)
+      localStorage.setItem('feebumpFeeChannel', this.feeChannelSecret)
+      this.$parent.$emit('feeChannelSecret', this.feeChannelSecret)
 
-      await this.updateMarketMakerAccount()
+      await this.updateFeeChannelAccount()
 
       this.createAccountsLoading = false
     },
 
-    updateMarketMakerAccount() {
-      if (!this.marketMakerPublicKey)
+    updateFeeChannelAccount() {
+      if (!this.feeChannelPublicKey)
         return
 
       return this.server
-      .loadAccount(this.marketMakerPublicKey)
+      .loadAccount(this.feeChannelPublicKey)
       .then((account) => {
         if (this.ogSequence === null)
           this.ogSequence = account.sequence
 
-        this.marketMakerAccount = account
+        this.feeChannelAccount = account
       })
     },
   }
@@ -93,6 +93,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.quadrant {
+  height: 100%;
+}
+
 h1 {
   font-size: 24px;
   font-weight: 600;
