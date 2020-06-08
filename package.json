@@ -1,5 +1,5 @@
 {
-  "name": "path-pay",
+  "name": "fee-bump",
   "version": "1.0.0",
   "description": "My well-made Nuxt.js project",
   "author": "Tyler van der Hoeven",
@@ -11,15 +11,15 @@
     "deploy": "now deploy --prod"
   },
   "dependencies": {
-    "@nuxtjs/axios": "^5.9.7",
+    "@nuxtjs/axios": "^5.11.0",
     "bignumber.js": "^9.0.0",
     "bluebird": "^3.7.2",
     "lodash-es": "^4.17.15",
     "nuxt": "^2.12.2",
-    "stellar-sdk": "^4.1.0"
+    "stellar-sdk": "^5.0.3"
   },
   "devDependencies": {
-    "node-sass": "^4.13.1",
+    "node-sass": "^4.14.1",
     "sass-loader": "^8.0.2"
   }
 }

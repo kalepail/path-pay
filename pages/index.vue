@@ -5,16 +5,14 @@
   </section>
 
   <section>
-    <marketMaker />
-    <orderBook />
+    <feeChannel />
   </section>
 </main>
 </template>
 
 <script>
 import basicWallet from '~/components/basic-wallet'
-import marketMaker from '~/components/market-maker'
-import orderBook from '~/components/order-book'
+import feeChannel from '~/components/fee-channel'
 
 export default {
   data() {
@@ -24,8 +22,7 @@ export default {
   },
   components: {
     basicWallet,
-    marketMaker,
-    orderBook
+    feeChannel
   }
 }
 </script>
@@ -50,5 +47,6 @@ section {
   flex-direction: column;
   overflow: hidden;
   align-items: flex-start;
+  height: 100%;
 }
 </style>

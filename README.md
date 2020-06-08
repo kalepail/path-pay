@@ -1,4 +1,4 @@
-# path-pay
+# fee-bump
 
 > My well-made Nuxt.js project
 

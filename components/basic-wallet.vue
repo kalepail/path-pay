@@ -9,15 +9,17 @@
     <li v-for="(asset, i) in userAccount.balances" :key="i">
       <strong>{{asset.asset_code || 'XLM'}}</strong>: {{asset.balance}}
     </li>
+    <li>
+      <strong>Sequence</strong>: {{userAccount.sequence - ogSequence}}
+    </li>
   </ul>
 
   <div class="actions" v-if="
-    assetIssuerPublicKey
+    marketMakerSecret
     && userAccount
     && type === 'you'
   ">
-    <button @click="pathPayUsd">{{ pathPayUsdLoading ? '...' : 'Purchase USD with XLM' }}</button>
-    <button @click="pathPayEur" v-if="friendPublicKey">{{ pathPayEurLoading ? '...' : 'Send EUR to friend via USD' }}</button>
+    <button @click="feeBumpPay" v-if="friendPublicKey">{{ feeBumpPayLoading ? '...' : 'Send 10 XLM to Friend via Fee Bump Transaction' }}</button>
   </div>
 </div>
 </template>
@@ -31,13 +33,12 @@ export default {
     return {
       userSecret: null,
       userAccount: null,
-      friendSecret: localStorage.getItem('pathpayFriend'),
-      assetIssuerSecret: localStorage.getItem('pathpayAssetIssuer'),
+      ogSequence: null,
+      friendSecret: localStorage.getItem('feebumpFriend'),
+      marketMakerSecret: localStorage.getItem('feebumpMarketMaker'),
       server: new Server('https://horizon-testnet.stellar.org'),
       createAccountLoading: false,
-      pathPayUsdLoading: false,
-      pathPayEurLoading: false,
-
+      feeBumpPayLoading: false,
     }
   },
   computed: {
@@ -60,16 +61,20 @@ export default {
       if (this.friendKeypair)
         return this.friendKeypair.publicKey()
     },
-    assetIssuerPublicKey() {
-      if (this.assetIssuerSecret)
-        return Keypair.fromSecret(this.assetIssuerSecret).publicKey()
-    }
+    marketMakerPublicKey() {
+      if (this.marketMakerSecret)
+        return Keypair.fromSecret(this.marketMakerSecret).publicKey()
+    },
+    marketMakerKeypair() {
+      if (this.marketMakerSecret)
+        return Keypair.fromSecret(this.marketMakerSecret)
+    },
   },
   created() {
-    this.userSecret = localStorage.getItem(`pathpay${this.typeFriendly}`)
+    this.userSecret = localStorage.getItem(`feebump${this.typeFriendly}`)
     this.updateUserAccount()
 
-    this.$parent.$on('assetIssuerSecret', (assetIssuerSecret) => this.assetIssuerSecret = assetIssuerSecret)
+    this.$parent.$on('marketMakerSecret', (marketMakerSecret) => this.marketMakerSecret = marketMakerSecret)
 
     if (this.type === 'friend')
       this.$parent.$on('updateUserAccount', this.updateUserAccount)
@@ -90,7 +95,7 @@ export default {
         await this.$axios(`https://friendbot.stellar.org?addr=${this.userPublicKey}`)
       }
 
-      localStorage.setItem(`pathpay${this.typeFriendly}`, this.userSecret)
+      localStorage.setItem(`feebump${this.typeFriendly}`, this.userSecret)
       this.updateUserAccount()
 
       if (this.type === 'friend')
@@ -99,84 +104,37 @@ export default {
       this.createAccountLoading = true
     },
 
-    pathPayUsd() {
-      this.pathPayUsdLoading = true
+    feeBumpPay() {
+      this.feeBumpPayLoading = true
 
-      return this.server
-      .accounts()
-      .accountId(this.userPublicKey)
-      .call()
-      .then(({sequence}) => {
-        const usd = new Asset('USD', this.assetIssuerPublicKey)
-        const account = new Account(this.userPublicKey, sequence)
-
-        const transaction = new TransactionBuilder(account, {
+      this.server
+      .loadAccount(this.userPublicKey)
+      .then((account) => {
+        const innerTx = new TransactionBuilder(account, {
           fee: BASE_FEE,
-          networkPassphrase: Networks.TESTNET
+          networkPassphrase: Networks.TESTNET,
+          v1: true
         })
-        .addOperation(Operation.changeTrust({
-          asset: usd
-        }))
-        .addOperation(Operation.pathPaymentStrictSend({
-          sendAsset: Asset.native(),
-          sendAmount: '500',
-          destination: this.userPublicKey,
-          destAsset: usd,
-          destMin: '1', // Will receive roughly 25 USD
-        }))
-        .setTimeout(0)
-        .build()
-
-        transaction.sign(this.userKeypair)
-        return this.server.submitTransaction(transaction)
-      })
-      .then((res) => console.log(res))
-      .catch((err) => console.error(err))
-      .finally(() => this.updateUserAccount())
-      .finally(() => setTimeout(() => {
-        this.$parent.$emit('updateMarketMakerAccount')
-        this.$parent.$emit('updateBooks')
-        this.pathPayUsdLoading = false
-      }, 1000))
-    },
-
-    pathPayEur() {
-      this.pathPayEurLoading = true
-
-      return this.server
-      .accounts()
-      .accountId(this.userPublicKey)
-      .call()
-      .then(({sequence}) => {
-        const usd = new Asset('USD', this.assetIssuerPublicKey)
-        const eur = new Asset('EUR', this.assetIssuerPublicKey)
-        const account = new Account(this.userPublicKey, sequence)
-
-        const transaction = new TransactionBuilder(account, {
-          fee: BASE_FEE,
-          networkPassphrase: Networks.TESTNET
-        })
-        .addOperation(Operation.changeTrust({
-          asset: eur,
-          source: this.friendPublicKey
-        }))
-        .addOperation(Operation.pathPaymentStrictReceive({
-          sendAsset: usd,
-          sendMax: '20',
+        .addOperation(Operation.payment({
           destination: this.friendPublicKey,
-          destAsset: eur,
-          destAmount: '10',
-          path: [
-            usd,
-            Asset.native(),
-            eur
-          ]
+          asset: Asset.native(),
+          amount: '10'
         }))
         .setTimeout(0)
         .build()
 
-        transaction.sign(this.userKeypair, this.friendKeypair)
-        return this.server.submitTransaction(transaction)
+        innerTx.sign(this.userKeypair)
+
+        const feeBumpTxn = new TransactionBuilder.buildFeeBumpTransaction(
+          this.marketMakerKeypair,
+          BASE_FEE,
+          innerTx,
+          Networks.TESTNET
+        )
+
+        feeBumpTxn.sign(this.marketMakerKeypair)
+
+        return this.server.submitTransaction(feeBumpTxn)
       })
       .then((res) => console.log(res))
       .catch((err) => console.error(err))
@@ -184,8 +142,7 @@ export default {
       .finally(() => setTimeout(() => {
         this.$parent.$emit('updateUserAccount')
         this.$parent.$emit('updateMarketMakerAccount')
-        this.$parent.$emit('updateBooks')
-        this.pathPayEurLoading = false
+        this.feeBumpPayLoading = false
       }, 1000))
     },
 
@@ -194,20 +151,19 @@ export default {
         return
 
       return this.server
-      .accounts()
-      .accountId(this.userPublicKey)
-      .call()
-      .then((account) => this.userAccount = account)
+      .loadAccount(this.userPublicKey)
+      .then((account) => {
+        if (this.ogSequence === null)
+          this.ogSequence = account.sequence
+
+        this.userAccount = account
+      })
     },
   }
 }
 </script>
 
 <style lang="scss" scoped>
-.quadrant {
-  height: 100%;
-}
-
 h1 {
   font-size: 24px;
   font-weight: 600;
