@@ -15,7 +15,7 @@
     "bignumber.js": "^9.0.0",
     "bluebird": "^3.7.2",
     "lodash-es": "^4.17.15",
-    "nuxt": "^2.12.2",
+    "nuxt": "^2.15.8",
     "stellar-sdk": "^5.0.3"
   },
   "devDependencies": {
